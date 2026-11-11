@@ -1,4 +1,4 @@
-<img width="5332" height="2840" alt="1000075276" src="https://github.com/user-attachments/assets/fa27e146-1ed8-4285-b67a-5e7ea589d878" />
+<img width="5332" height="2840" alt="1000075276" src="https://github.com/user-attachments/assets/d3e35e51-b8d5-4fb5-b679-a51dcd3753ec" />
 
 # LiveBoot Enhanced
 
@@ -45,8 +45,8 @@ In short: **if it can be said on the boot screen, this module can say it — in 
 
 ## Preview
 
-<img width="1080" height="2400" alt="1000095861" src="https://github.com/user-attachments/assets/2aeb79d1-3c4a-4918-ad29-70a4584834b4" />
-<img width="1080" height="2400" alt="1000095862" src="https://github.com/user-attachments/assets/74356556-9836-4530-b5fd-8421e87794cd" />
+<img width="1080" height="2400" alt="1000095862" src="https://github.com/user-attachments/assets/f1f30324-968e-4113-ad2d-5eaadd7ff571" />
+<img width="1080" height="2400" alt="1000095861" src="https://github.com/user-attachments/assets/3101542a-440c-43ef-8a61-a945edbb4935" />
 
 ---
 
