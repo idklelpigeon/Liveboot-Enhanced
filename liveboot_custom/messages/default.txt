@@ -1,0 +1,85 @@
+[clear]
+[image=background.png,behind]
+[wait=200]
+
+[color=#72E6FF]
+LIVEBOOT ENHANCED
+[color=white]
+v1.0  ·  KernelSU / Magisk
+[wait=400]
+
+[color=#4DFFFFFF]
+────────────────────────────────
+[wait=200]
+
+[color=white]
+Initializing module runtime
+[wait=250]
+
+[highlight "OK" green]
+[highlight "FAIL" red]
+Boot hook ...................... OK
+Message engine ................. OK
+Display surface ................ OK
+Background layer ............... OK
+Custom font engine ............. FAIL
+[highlight clear]
+[wait=400]
+
+[color=yellow]
+Note  ·  Custom fonts unavailable in v1.0
+[wait=600]
+
+[color=#4DFFFFFF]
+────────────────────────────────
+[wait=200]
+
+[color=white]
+Preparing display
+[progress=0]
+[wait=120]
+[progress=25]
+[wait=120]
+[progress=50]
+[wait=120]
+[progress=75]
+[wait=120]
+[progress=100]
+[wait=300]
+
+[color=green]
+Display ready.
+[wait=500]
+
+[color=#4DFFFFFF]
+────────────────────────────────
+[wait=200]
+
+[color=white]
+Connecting to system service...
+[wait=700]
+[replace]
+[color=green]
+System service connected.
+[wait=500]
+
+[color=#4DFFFFFF]
+────────────────────────────────
+[wait=200]
+
+[color=#72E6FF]
+Community
+[color=white]
+Channel    · [w=#72E6FF]t.me/livebootplus[/w]
+Discussion · [w=#72E6FF]t.me/livebootplusdiscussion[/w]
+[wait=500]
+
+[color=#4DFFFFFF]
+────────────────────────────────
+[wait=300]
+
+[color=white]
+Welcome to LiveBoot Enhanced.
+[color=cyan]
+Edit config/settings.conf to make it yours.
+[wait=1500]

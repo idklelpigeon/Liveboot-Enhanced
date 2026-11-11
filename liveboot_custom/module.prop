@@ -1,0 +1,6 @@
+id=liveboot_custom
+name=LiveBoot Enhanced
+version=1.0
+versionCode=9
+author=idklelpigeon
+description=LiveBoot Enhanced boot overlay with scripted messages, text colors, image layers and custom fonts

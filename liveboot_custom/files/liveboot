@@ -1,0 +1,49 @@
+#!/system/bin/sh
+# Starts the LiveBoot overlay. Picks the right app_process / library paths / daemonize
+# helper for this device's CPU ABI instead of assuming a 64-bit ARM phone.
+MODDIR=/data/adb/modules/liveboot_custom
+FILES=$MODDIR/files
+
+ABILIST=$(/system/bin/getprop ro.product.cpu.abilist 2>/dev/null)
+[ -n "$ABILIST" ] || ABILIST=$(/system/bin/getprop ro.product.cpu.abi 2>/dev/null)
+ABI=${ABILIST%%,*}
+
+if [ -x /system/bin/app_process64 ] && { [ "$ABI" = arm64-v8a ] || [ "$ABI" = x86_64 ] || [ -z "$ABI" ]; }; then
+    APP=/system/bin/app_process64
+    L=lib64
+    case "$ABI" in x86_64) ABI=x86_64 ;; *) ABI=arm64-v8a ;; esac
+else
+    if [ -x /system/bin/app_process32 ]; then APP=/system/bin/app_process32; else APP=/system/bin/app_process; fi
+    L=lib
+    case "$ABI" in x86*) ABI=x86 ;; *) ABI=armeabi-v7a ;; esac
+fi
+
+# Per-ABI helper (extracted from the APK); libdaemonize.so is the original arm64 copy.
+HELPER=$FILES/libdaemonize.$ABI.so
+[ -x "$HELPER" ] || HELPER=$FILES/libdaemonize.so
+
+# Fallback display size, only used if the real size cannot be determined at startup.
+W=1080
+H=2400
+FBSIZE=$(/system/bin/cat /sys/class/graphics/fb0/virtual_size 2>/dev/null)
+case "$FBSIZE" in
+    [0-9]*,[0-9]*)
+        FW=${FBSIZE%%,*}
+        FH=${FBSIZE#*,}
+        case "$FW$FH" in
+            *[!0-9]*) ;;
+            *)
+                # accept only plausible portrait panels (guards against double-buffered heights)
+                if [ "$FW" -ge 240 ] && [ "$FH" -ge "$FW" ] && [ "$FH" -le $((FW * 26 / 10)) ] && [ "$FH" -le 8192 ]; then
+                    W=$FW
+                    H=$FH
+                fi
+                ;;
+        esac
+        ;;
+esac
+
+NO_ADDR_COMPAT_LAYOUT_FIXUP=1 ANDROID_ROOT=/system \
+LD_LIBRARY_PATH=/system/$L:/system/$L/drm:/system/$L/hw:/system/$L/extractors:/system/$L/hwasan:/vendor/$L:/vendor/$L/egl:/vendor/$L/mediacas:/vendor/$L/hw:/vendor/$L/soundfx:/vendor/$L/omx:/vendor/$L/vndk:/vendor/$L/mediadrm:/system/bin:/librootjava \
+CLASSPATH=$FILES/liveboot.apk \
+"$HELPER" "$APP" /system/bin --nice-name=eu.chainfire.liveboot:root eu.chainfire.liveboot.shell.Runner "$FILES/liveboot.apk" boot logcatlevels=VDIWEFS logcatbuffers=MSC logcatformat=brief dmesg=0-99 lines=100 wordwrap save fallbackwidth=$W fallbackheight=$H
