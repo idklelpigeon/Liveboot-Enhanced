@@ -216,13 +216,23 @@ For a full-screen portrait image, prepare artwork close to the device's display 
 
 ## 10. Fonts and text sizing
 
-A known-good static font, `LiveBootMono.ttf`, is included in `liveboot_custom/fonts/` and selected by default. To use another static `.ttf` or `.otf` file, copy it directly into `liveboot_custom/fonts/` and set its exact filename in `config/settings.conf`:
+A static DejaVu Sans Mono font, `LiveBootMono.ttf`, is included in `liveboot_custom/fonts/` and selected by default. To use another static `.ttf` or `.otf` file, copy it directly into `liveboot_custom/fonts/` and set its exact filename in `config/settings.conf`:
 
 ```ini
 font=MyFont.ttf
 ```
 
-A blank value, `default`, or `monospace` selects Android’s built-in monospace typeface. If a custom font cannot be loaded or is invalid, the runtime falls back to monospace and writes the exact result to `/data/local/tmp/liveboot_font_status.log`. Font files must be readable, no larger than 32 MiB, and have a valid TrueType/OpenType signature. Use simple exact filenames without paths; `.ttc` collections and variable font files are not supported by this setting. The font setting applies to the entire message renderer; the script format does not switch fonts line by line.
+Before starting `app_process`, the module launcher copies the selected font into `/data/local/tmp/liveboot-font/`, sets readable file permissions, and verifies that the staged file is non-empty and readable. It also stages `LiveBootMono.ttf` as the fallback. Java reads the staged path from `LIVEBOOT_FONT_PATH`, loads it with `Typeface.Builder` first, and tries `Typeface.createFromFile` if the builder fails. If the configured font cannot be staged or loaded, Java tries the staged `LiveBootMono.ttf`, then the original bundled copy, and finally Android monospace. The detailed Java result, including exception class and message, is written to `/data/local/tmp/liveboot_font_status.log`; staging results are written to `/data/local/tmp/liveboot-font/staging.log` when accessible.
+
+A blank value, `default`, or `monospace` intentionally selects Android’s built-in monospace typeface. Font files must be readable, no larger than 32 MiB, and have a valid TrueType/OpenType signature. Use simple exact filenames without paths; `.ttc` collections and variable font files are not supported by this setting. The font setting applies to the entire message renderer; the script format does not switch fonts line by line.
+
+The staged directory uses ordinary filesystem permissions, but access from the root Java process can still be restricted by a device's SELinux policy. The loader records access failures and attempts the module's bundled fallback path if the staged file cannot be opened. Actual SELinux behavior must be confirmed on the target device.
+
+## 11. Per-line text backgrounds
+
+Set `line_background=on` in `config/settings.conf` to draw an opaque black rectangle behind every displayed text row. Set `line_background=off` to disable it. The default is `off` so existing layouts do not change unexpectedly.
+
+The rectangle width is calculated from the measured text width, with a small horizontal inset. It does not fill the remaining screen width. A long logical line that wraps produces a separate fitted rectangle for each displayed row; wrapped pieces remain part of the same original message line. The setting applies to scripted messages and live logcat/dmesg rows. It is independent of the full-screen background, image opacity, and image layer settings.
 
 Text size settings:
 
@@ -232,7 +242,7 @@ Text size settings:
 - `wordwrap=true`: wrap long lines at spaces when possible.
 - `wordwrap=false`: stop at the available width instead of wrapping.
 
-## 11. `settings.conf` reference
+## 12. `settings.conf` reference
 
 The file is `liveboot_custom/config/settings.conf`. Values are read at startup; reboot after editing.
 
@@ -246,7 +256,8 @@ The file is `liveboot_custom/config/settings.conf`. Values are read at startup; 
 | `image_fit` | `cover`, `contain`, `stretch` | `cover` |
 | `image_opacity` | `0`–`100` | `100`; image opacity, in addition to PNG alpha |
 | `image_layer` | `behind`, `front` | `behind` |
-| `font` | Blank, `monospace`, or `.ttf`/`.otf` filename | Built-in monospace |
+| `font` | Blank, `monospace`, or `.ttf`/`.otf` filename | `LiveBootMono.ttf`; custom font staged before launch |
+| `line_background` | `on` / `off` (also `true` / `false`) | `off`; content-width black background on each displayed row |
 | `text_size` | `0`–`256` | `0`; automatic sizing |
 | `lines` | `1`–`500` | `100` |
 | `wordwrap` | `true` / `false` | `true` |
@@ -266,7 +277,8 @@ dark=true
 image_fit=cover
 image_opacity=100
 image_layer=behind
-font=
+font=LiveBootMono.ttf
+line_background=off
 text_size=0
 lines=100
 wordwrap=true
@@ -274,7 +286,7 @@ save=true
 logcatcolors=true
 ```
 
-## 12. Complete sample
+## 13. Complete sample
 
 ```text
 [clear]
@@ -303,7 +315,7 @@ Service started successfully.
 Boot display sequence complete.
 ```
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 **A directive appears as text.** Check spelling and syntax. Directives such as `[wait=500]`, `[clear]`, `[fill]`, `[replace]`, `[progress=50]`, `[color=cyan]`, and `[image=photo.png]` must occupy their own lines. Inline word-color tags are the exception. Center/right alignment tags are not supported in v1.0 and must be removed from message files.
 
@@ -313,6 +325,8 @@ Boot display sequence complete.
 
 **An image does not appear.** Check its exact filename and supported extension, confirm it is in `images/`, and verify it is non-empty and below 32 MiB. Image names cannot contain directory paths.
 
-**A custom font does not appear.** Read `/data/local/tmp/liveboot_font_status.log` first. Confirm that the exact `.ttf`/`.otf` filename in `settings.conf` exists directly in `liveboot_custom/fonts/`, is readable, and is included in the installed module ZIP. The bundled `LiveBootMono.ttf` is the baseline test font. The fallback is Android monospace.
+**A custom font does not appear.** Read `/data/local/tmp/liveboot-font/staging.log` and `/data/local/tmp/liveboot_font_status.log`. Confirm that the exact `.ttf`/`.otf` filename in `settings.conf` exists directly in `liveboot_custom/fonts/`, is readable, and is included in the installed module ZIP. The runtime tries staged `LiveBootMono.ttf` and then the module's bundled copy before using Android monospace. A permission-denied error under `/data/local/tmp/liveboot-font/` may indicate a device-specific SELinux restriction; that behavior must be checked on the target firmware.
+
+**The line background fills too much space.** `line_background` is drawn to the measured width of each wrapped display row. Confirm that the installed APK was rebuilt from this source revision. Setting `line_background=off` disables the rectangles.
 
 **The display does not start.** Review `/data/local/tmp/liveboot_debug.log`, confirm the module is enabled, and check that all module launch scripts and daemon helper binaries retain executable mode. Device-specific early graphics initialization still requires on-device validation.

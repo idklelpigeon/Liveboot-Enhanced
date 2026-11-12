@@ -128,6 +128,7 @@ implements
     private static final String CONFIG_PATH = MODULE_ROOT + "/config/settings.conf";
     private static final String MESSAGE_ROOT = MODULE_ROOT + "/messages";
     private static final String FONT_ROOT = MODULE_ROOT + "/fonts";
+    private static final String STAGED_FONT_ROOT = "/data/local/tmp/liveboot-font";
     private static final String IMAGE_ROOT = MODULE_ROOT + "/images";
     private static final long MAX_MESSAGE_FILE_BYTES = 1024L * 1024L;
     private static final long MAX_IMAGE_FILE_BYTES = 32L * 1024L * 1024L;
@@ -144,6 +145,7 @@ implements
     private boolean mConfiguredImageOnTop = false;
     private volatile boolean mImageOnTop = false;
     private int mConfiguredTextSize = 0;
+    private boolean mLineBackground = false;
     private Typeface mConfiguredTypeface = Typeface.MONOSPACE;
     private volatile boolean mMessagePlaybackFinished = true;
     private Thread mMessagePlaybackThread = null;
@@ -389,6 +391,8 @@ implements
                             mConfiguredTextSize = clamp(Integer.parseInt(value), 0, 256);
                         } else if ("font".equals(key)) {
                             loadConfiguredFont(value);
+                        } else if ("line_background".equals(key)) {
+                            mLineBackground = parseBoolean(value, mLineBackground);
                         } else if ("lines".equals(key)) {
                             mLines = clamp(Integer.parseInt(value), 1, 500);
                         } else if ("wordwrap".equals(key)) {
@@ -429,6 +433,20 @@ implements
     private static final String FONT_STATUS_PATH = "/data/local/tmp/liveboot_font_status.log";
     private static final long MAX_FONT_FILE_BYTES = 32L * 1024L * 1024L;
 
+    private static final class FontLoadResult {
+        final Typeface typeface;
+        final String method;
+        final String error;
+        final long bytes;
+
+        FontLoadResult(Typeface typeface, String method, String error, long bytes) {
+            this.typeface = typeface;
+            this.method = method;
+            this.error = error;
+            this.bytes = bytes;
+        }
+    }
+
     private void writeFontStatus(String status) {
         Logger.d("FONT: %s", status);
         try {
@@ -440,22 +458,88 @@ implements
                 output.flush();
             }
         } catch (Exception e) {
-            Logger.d("Could not write font status: %s", e.getClass().getSimpleName());
+            Logger.d("Could not write font status: %s", describeFontException(e));
         }
     }
 
-    private static boolean hasSupportedFontSignature(File file) {
-        byte[] signature = new byte[4];
-        try (FileInputStream input = new FileInputStream(file)) {
-            if (input.read(signature) != 4) return false;
-        } catch (Exception e) {
-            return false;
-        }
+    private static String describeFontException(Exception error) {
+        if (error == null) return "unknown failure";
+        String message = error.getMessage();
+        return error.getClass().getName()
+                + ((message == null || message.trim().length() == 0) ? "" : ": " + message);
+    }
+
+    private static boolean hasSupportedFontSignature(byte[] signature) {
+        if (signature == null || signature.length < 4) return false;
         // TrueType, OpenType/CFF, legacy TrueType, and PostScript Type 1 sfnt headers.
         return (signature[0] == 0 && signature[1] == 1 && signature[2] == 0 && signature[3] == 0)
                 || (signature[0] == 'O' && signature[1] == 'T' && signature[2] == 'T' && signature[3] == 'O')
                 || (signature[0] == 't' && signature[1] == 'r' && signature[2] == 'u' && signature[3] == 'e')
                 || (signature[0] == 't' && signature[1] == 'y' && signature[2] == 'p' && signature[3] == '1');
+    }
+
+    /** Open a font only from an explicitly approved directory and preserve loader exceptions. */
+    private FontLoadResult tryLoadFont(File fontFile, String allowedRoot) {
+        long bytes = 0L;
+        String builderError = "";
+        try {
+            if (fontFile == null) throw new java.io.IOException("font path was not supplied by the launcher");
+            String root = new File(allowedRoot).getCanonicalPath() + File.separator;
+            String resolved = fontFile.getCanonicalPath();
+            if (!resolved.startsWith(root)) {
+                throw new java.io.IOException("font path is outside the approved directory: " + resolved);
+            }
+            if (!fontFile.isFile()) throw new java.io.IOException("font file does not exist: " + resolved);
+            bytes = fontFile.length();
+            if (bytes <= 0L) throw new java.io.IOException("font file is empty: " + resolved);
+            if (bytes > MAX_FONT_FILE_BYTES) {
+                throw new java.io.IOException("font exceeds 32 MiB: " + bytes + " bytes");
+            }
+            if (!fontFile.canRead()) throw new java.io.IOException("font is not readable: " + resolved);
+
+            byte[] signature = new byte[4];
+            try (FileInputStream input = new FileInputStream(fontFile)) {
+                if (input.read(signature) != 4) {
+                    throw new java.io.IOException("font header is truncated: " + resolved);
+                }
+            }
+            if (!hasSupportedFontSignature(signature)) {
+                throw new java.io.IOException("unsupported TTF/OTF signature in " + resolved);
+            }
+
+            Typeface loaded = null;
+            String loadMethod = "";
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                try {
+                    loaded = new Typeface.Builder(fontFile).build();
+                    if (loaded != null) loadMethod = "Typeface.Builder";
+                } catch (Exception e) {
+                    builderError = describeFontException(e);
+                    Logger.d("Typeface.Builder failed for %s: %s", resolved, builderError);
+                }
+            }
+            if (loaded == null) {
+                try {
+                    loaded = Typeface.createFromFile(fontFile);
+                    if (loaded != null) loadMethod = "Typeface.createFromFile";
+                } catch (Exception e) {
+                    String compatibilityError = describeFontException(e);
+                    Logger.d("Typeface.createFromFile failed for %s: %s", resolved, compatibilityError);
+                    if (builderError.length() == 0) builderError = compatibilityError;
+                    else builderError += "; Typeface.createFromFile: " + compatibilityError;
+                }
+            }
+            if (loaded == null) {
+                throw new java.io.IOException("Android returned no Typeface"
+                        + (builderError.length() == 0 ? "" : " (" + builderError + ")"));
+            }
+            if (builderError.length() > 0) {
+                loadMethod += " (Builder fallback: " + builderError + ")";
+            }
+            return new FontLoadResult(loaded, loadMethod, "", bytes);
+        } catch (Exception e) {
+            return new FontLoadResult(null, "", describeFontException(e), bytes);
+        }
     }
 
     private void loadConfiguredFont(String fileName) {
@@ -469,69 +553,71 @@ implements
 
         String name = fileName.trim();
         String lowerName = name.toLowerCase(java.util.Locale.US);
-        if (!new File(name).getName().equals(name)
+        if (!new File(name).getName().equals(name) || name.startsWith(".")
                 || !(lowerName.endsWith(".ttf") || lowerName.endsWith(".otf"))) {
-            mConfiguredTypeface = Typeface.MONOSPACE;
-            writeFontStatus("FALLBACK: invalid font filename; expected a .ttf or .otf filename");
+            name = "";
+        }
+
+        String customError;
+        FontLoadResult customResult = null;
+        String stagedPath = System.getenv("LIVEBOOT_FONT_PATH");
+        if (name.length() > 0 && stagedPath != null && stagedPath.length() > 0
+                && new File(stagedPath).getName().equals(name)) {
+            customResult = tryLoadFont(new File(stagedPath), STAGED_FONT_ROOT);
+            customError = customResult.error;
+        } else if (name.length() == 0) {
+            customError = "invalid font filename; expected a simple .ttf or .otf filename";
+        } else {
+            customError = "configured font was not staged by the launcher (LIVEBOOT_FONT_PATH missing or mismatched)";
+        }
+
+        if (customResult != null && customResult.typeface != null) {
+            mConfiguredTypeface = customResult.typeface;
+            writeFontStatus("LOADED: " + name + " from staged copy via " + customResult.method
+                    + " (" + customResult.bytes + " bytes)");
             return;
         }
 
-        File fontFile = new File(FONT_ROOT, name);
-        try {
-            String root = new File(FONT_ROOT).getCanonicalPath() + File.separator;
-            String resolved = fontFile.getCanonicalPath();
-            if (!resolved.startsWith(root) || !fontFile.isFile() || !fontFile.canRead()
-                    || fontFile.length() <= 0 || fontFile.length() > MAX_FONT_FILE_BYTES) {
-                mConfiguredTypeface = Typeface.MONOSPACE;
-                writeFontStatus("FALLBACK: font missing, unreadable, empty, oversized, or outside fonts/: " + name);
-                return;
-            }
-            if (!hasSupportedFontSignature(fontFile)) {
-                mConfiguredTypeface = Typeface.MONOSPACE;
-                writeFontStatus("FALLBACK: invalid TTF/OTF signature: " + name);
-                return;
-            }
-
-            Typeface loaded = null;
-            String loadMethod = "";
-            // Use the modern font builder first on Android 8.0+, then retain the API 21+ loader
-            // as a compatibility fallback. A non-null Typeface returned for a validated font
-            // file is accepted; comparing Typeface object identity with system singletons is not
-            // a reliable way to identify a custom font on Android implementations.
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                try {
-                    loaded = new Typeface.Builder(fontFile).build();
-                    if (loaded != null) loadMethod = "Typeface.Builder";
-                } catch (Exception e) {
-                    Logger.d("Typeface.Builder failed: %s", e.getClass().getSimpleName());
-                }
-            }
-            if (loaded == null) {
-                try {
-                    loaded = Typeface.createFromFile(fontFile);
-                    if (loaded != null) loadMethod = "Typeface.createFromFile";
-                } catch (Exception e) {
-                    Logger.d("Typeface.createFromFile failed: %s", e.getClass().getSimpleName());
-                }
-            }
-
-            if (loaded != null) {
-                mConfiguredTypeface = loaded;
-                writeFontStatus("LOADED: " + name + " via " + loadMethod + " (" + fontFile.length() + " bytes)");
+        // A failed custom font must not silently revert to Android's unrelated monospace face.
+        // First use the separately staged bundled font, then try the module copy as a last resort
+        // in case /data/local/tmp is blocked by this device's SELinux policy.
+        String fallbackPath = System.getenv("LIVEBOOT_FONT_FALLBACK_PATH");
+        FontLoadResult fallbackResult = null;
+        String fallbackError = "staged LiveBootMono.ttf path was not provided";
+        if (fallbackPath != null && fallbackPath.length() > 0
+                && "LiveBootMono.ttf".equals(new File(fallbackPath).getName())) {
+            fallbackResult = tryLoadFont(new File(fallbackPath), STAGED_FONT_ROOT);
+            fallbackError = fallbackResult.error;
+        }
+        if (fallbackResult == null || fallbackResult.typeface == null) {
+            FontLoadResult moduleFallback = tryLoadFont(
+                    new File(FONT_ROOT, "LiveBootMono.ttf"), FONT_ROOT);
+            if (moduleFallback.typeface != null) {
+                fallbackResult = moduleFallback;
             } else {
-                mConfiguredTypeface = Typeface.MONOSPACE;
-                writeFontStatus("FALLBACK: Android rejected font file: " + name);
+                fallbackError += "; module copy: " + moduleFallback.error;
             }
-        } catch (Exception e) {
+        }
+
+        if (fallbackResult != null && fallbackResult.typeface != null) {
+            mConfiguredTypeface = fallbackResult.typeface;
+            writeFontStatus("FALLBACK: custom font " + (name.length() == 0 ? fileName : name)
+                    + " failed: " + customError + "; loaded bundled LiveBootMono.ttf via "
+                    + fallbackResult.method + " (" + fallbackResult.bytes + " bytes)");
+        } else {
             mConfiguredTypeface = Typeface.MONOSPACE;
-            writeFontStatus("FALLBACK: font load exception for " + name + ": " + e.getClass().getSimpleName());
+            writeFontStatus("FALLBACK: custom font " + (name.length() == 0 ? fileName : name)
+                    + " failed: " + customError + "; LiveBootMono.ttf also failed: " + fallbackError
+                    + "; using Android built-in monospace");
         }
     }
 
     private static boolean parseBoolean(String value, boolean fallback) {
         if (value == null) return fallback;
         if ("true".equalsIgnoreCase(value) || "yes".equalsIgnoreCase(value) || "1".equals(value)) return true;
-        if ("false".equalsIgnoreCase(value) || "no".equalsIgnoreCase(value) || "0".equals(value)) return false;
+        if ("false".equalsIgnoreCase(value) || "no".equalsIgnoreCase(value)
+                || "off".equalsIgnoreCase(value) || "0".equals(value)) return false;
+        if ("on".equalsIgnoreCase(value)) return true;
         return fallback;
     }
 
@@ -557,7 +643,7 @@ implements
         mTextureManager = new GLTextureManager();
         mHelper = new GLHelper(mWidth, mHeight, GLHelper.getDefaultVMatrix());
         mTextManager = new SpanTextManager(mTextureManager, mHelper, mWidth, mHeight,
-                computeLineHeight(), mConfiguredTypeface, mConfiguredTextSize);
+                computeLineHeight(), mConfiguredTypeface, mConfiguredTextSize, mLineBackground);
 
         GLPicture.initGl();
         initImageRenderer();

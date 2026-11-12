@@ -17,17 +17,16 @@ Initializing module runtime
 [wait=250]
 
 [highlight "OK" green]
-[highlight "FAIL" red]
 Boot hook ...................... OK
 Message engine ................. OK
 Display surface ................ OK
 Background layer ............... OK
-Custom font engine ............. FAIL
+Font option ................... REQUESTED
 [highlight clear]
 [wait=400]
 
 [color=yellow]
-Note  ·  Custom fonts unavailable in v1.0
+Tip  ·  line_background=on enables fitted black text rows
 [wait=600]
 
 [color=#4DFFFFFF]

@@ -18,7 +18,7 @@ In short: **if it can be said on the boot screen, this module can say it — in 
 > Pre-packaged installable ZIPs are available on the [GitHub Releases](https://github.com/idklelpigeon/Liveboot-Enhanced/releases) page. If you prefer to build from source, `build_module.sh` compiles the current Java source and refreshes the module APK. No prebuilt APK is committed directly to the repository.
 
 > [!TIP]
-> **v1.0 is a tested, stable release.** Verified end-to-end on Galaxy S21 5G (G991N) running KernelSU Next — build, install, boot render, image backgrounds, and message scripting all confirmed working. See [Known Issues](#known-issues) for the current font limitation.
+> **v1.0 is the last device-verified release.** The staged-font and content-sized line-background changes in the current source have host-side checks, but still require boot testing on a device before they can be described as verified.
 
 > [!NOTE]
 > **Community:** join the [Telegram channel](https://t.me/livebootplus) for releases and the [discussion chat](https://t.me/livebootplusdiscussion) for support, bug reports, and script sharing.
@@ -62,7 +62,8 @@ Stock LiveBoot streams kernel and logcat output — useful, but visually flat an
 | Inline word colors & highlights | ❌ | ✅ |
 | Animated progress bars | ❌ | ✅ custom colors |
 | Image backgrounds (PNG/JPEG/WebP) | ❌ | ✅ behind or in front |
-| Custom TTF/OTF fonts | ❌ | ⚠️ broken in v1.0 (see [Known Issues](#known-issues)) |
+| Custom TTF/OTF fonts | ❌ | ✅ staged deployment and bundled fallback (device test pending) |
+| Content-sized line backgrounds | ❌ | ✅ optional black background per displayed text row |
 | Adjustable text size & wrapping | ❌ | ✅ |
 | Message replacement (two modes) | ❌ | ✅ |
 | Clear / fill / overwrite regions | ❌ | ✅ |
@@ -91,6 +92,7 @@ Stock LiveBoot streams kernel and logcat output — useful, but visually flat an
 - **Inline word colors** — color individual words or spans without affecting the rest of the line, useful for emphasizing `[ OK ]`, `[FAIL]`, or subsystem names.
 - **Persistent word-highlighting rules** — declare a pattern once (e.g. a keyword) and every matching occurrence is highlighted automatically across the whole script, without editing each line.
 - **Left-aligned rendering** — consistent, predictable layout across screen sizes; center/right alignment is intentionally out of scope for this release.
+- **Content-sized line backgrounds** — optional opaque black rectangles are drawn only behind each displayed text row, sized to its measured text width. Wrapped portions receive independent rectangles instead of a full-width bar.
 
 ### Progress and status
 
@@ -115,7 +117,7 @@ Stock LiveBoot streams kernel and logcat output — useful, but visually flat an
 - **Adjustable text size** — pick a size that reads well on the device's screen without clipping.
 - **Word wrapping** — long lines wrap cleanly instead of being truncated, with a configurable limit.
 - **Configurable line count** — control how many lines are visible at once so layouts stay stable.
-- ⚠️ **Custom TTF/OTF fonts — currently broken.** The setting is present in `settings.conf` and parsed by the runtime, but the custom font is not applied at boot in v1.0. See [Known Issues](#known-issues) for details and tracking.
+- **Custom TTF/OTF fonts** — the launcher stages the selected font before starting Java; the renderer loads the staged path and falls back to the bundled `LiveBootMono.ttf` with exception details logged. The new path still needs device verification.
 
 ### Configuration surface
 
@@ -125,11 +127,12 @@ Everything above is driven from `config/settings.conf` and files in `messages/`.
 
 ## Known Issues
 
-| Issue | Status | Notes |
+| Issue / validation item | Status | Notes |
 |---|---|---|
-| Custom TTF/OTF fonts not applied | 🔴 Broken in v1.0 | Font path is read and parsed, but text still renders in the default boot font. Root cause under investigation. Track updates in the [Telegram channel](https://t.me/livebootplus) or report reproductions in the [discussion chat](https://t.me/livebootplusdiscussion). |
+| Custom TTF/OTF fonts | 🟡 Requires device validation | v1.0's direct loader was reported broken. The current source stages fonts under `/data/local/tmp/liveboot-font/`, logs the loader exception, and falls back to bundled `LiveBootMono.ttf`; SELinux access is device-dependent and has not yet been verified on the target firmware. |
+| Content-sized line backgrounds | 🟡 Requires device validation | Host-side source checks cover the per-row, measured-width drawing path. Visual behavior with image layers still needs on-device testing. |
 
-All other advertised features — message scripting, line/word colors, highlighting rules, progress bars, image layers (behind/front, cover/contain/stretch, opacity), text size, wrapping, and line count — are confirmed working on the verified device.
+The existing v1.0 behavior for message scripting, line/word colors, highlighting rules, progress bars, image layers, text size, wrapping, and line count was tested on the reference device. The two changes above are new source changes and are not included in that device-verification claim.
 
 ---
 
@@ -219,7 +222,7 @@ See [`MESSAGE_GUIDE.md`](MESSAGE_GUIDE.md) for directives, examples, settings, i
 - Default script: `liveboot_custom/messages/default.txt`.
 - Bundled examples demonstrate word colors and message replacement.
 - To select a different script, set `message=` in `config/settings.conf` to a filename inside `messages/`.
-- The `font=` setting is present but currently non-functional — see [Known Issues](#known-issues).
+- `font=` selects a staged TTF/OTF file; `line_background=on` enables content-sized black backgrounds behind displayed text rows. See [MESSAGE_GUIDE.md](MESSAGE_GUIDE.md).
 
 ---
 
@@ -245,20 +248,22 @@ See [`MESSAGE_GUIDE.md`](MESSAGE_GUIDE.md) for directives, examples, settings, i
 | `package_module.sh` | Validate required paths and APK checksum, then produce the installable ZIP |
 | `release.sh` | Run tests → build → package in one step |
 | `tests/run-parser-smoke.sh` | Host-side parser and text-replacement smoke test |
+| `tests/run-font-smoke.sh` | Host-side staged-font and per-row-background source checks |
 
 ---
 
 ## Testing
 
-Run the parser regression test:
+Run the host-side checks:
 
 ```sh
 ./tests/run-parser-smoke.sh
+./tests/run-font-smoke.sh
 ```
 
-This verifies parser behavior and the text-replacement utility. It does **not** replace a full Android build or on-device KernelSU/Magisk boot testing.
+These verify parser behavior, text replacement, font staging/source wiring, and the content-sized background drawing path. They do **not** replace a full Android build or on-device KernelSU/Magisk boot testing.
 
-For device validation, the v1.0 release was tested end-to-end on **Galaxy S21 5G (G991N)** running **KernelSU Next** — including build, ZIP install, boot render, image backgrounds, and message scripts. Custom font rendering was tested and confirmed broken; see [Known Issues](#known-issues).
+The v1.0 release was tested end-to-end on **Galaxy S21 5G (G991N)** running **KernelSU Next**. That verification does not cover the new staged-font loader or content-sized line-background renderer in this source revision; see [Known Issues](#known-issues).
 
 ---
 
@@ -269,7 +274,7 @@ For device validation, the v1.0 release was tested end-to-end on **Galaxy S21 5G
 | Telegram channel | https://t.me/livebootplus | Release announcements, changelogs, feature updates |
 | Telegram chat | https://t.me/livebootplusdiscussion | Support, bug reports, script sharing, general discussion |
 
-Bug reports with device model, root solution, firmware build, and logcat capture are much more useful in the chat than one-liners. For the font issue specifically, include whether the font path is reachable from the module runtime.
+Bug reports with device model, root solution, firmware build, font staging log, font status log, and logcat capture are useful for validating the new paths.
 
 ---
 
@@ -283,6 +288,6 @@ Based on [LiveBoot](https://github.com/Chainfire/liveboot) by Jorrit "Chainfire"
 
 v1.0 has been validated on a single reference device (Galaxy S21 5G / G991N on KernelSU Next). A successful build and ZIP validation confirm that the source compiled and the archive is structurally complete; they do not guarantee early boot rendering, device-specific graphics initialization, image decoding, or compatibility with every Android firmware/root combination.
 
-One advertised feature — custom TTF/OTF fonts — is **known broken in v1.0**. Everything else in the [Features](#features) list has been verified working on the reference device.
+The custom-font staging and content-sized line-background changes in the current source have not yet been verified on a device. In particular, SELinux access to `/data/local/tmp/liveboot-font/` depends on the target firmware and root implementation.
 
 Test the module on your own target device and keep a recovery path available before distributing it further.

@@ -40,6 +40,7 @@ final class SpanTextManager {
     private final GLTextureManager mTextureManager;
     private final GLHelper mHelper;
     private final Paint mPaint = new Paint();
+    private final Paint mLineBackgroundPaint = new Paint();
     private final ReentrantLock mLock = new ReentrantLock(true);
     private final List<Line> mLines = new ArrayList<>();
     /** Pictures/bitmaps released by add()/resize(); freed on the GL thread in draw(). */
@@ -54,13 +55,18 @@ final class SpanTextManager {
     private int mHorizontalPadding;
     private float mBaseline;
     private boolean mWordWrap = true;
+    private final boolean mLineBackground;
 
     SpanTextManager(GLTextureManager textureManager, GLHelper helper, int width, int height,
-                    int lineHeight, Typeface typeface, int textSize) {
+                    int lineHeight, Typeface typeface, int textSize, boolean lineBackground) {
         mTextureManager = textureManager;
         mHelper = helper;
         mTypeface = typeface == null ? Typeface.MONOSPACE : typeface;
         mRequestedTextSize = textSize;
+        mLineBackground = lineBackground;
+        mLineBackgroundPaint.setColor(0xFF000000);
+        mLineBackgroundPaint.setStyle(Paint.Style.FILL);
+        mLineBackgroundPaint.setAntiAlias(false);
         mPaint.setAntiAlias(true);
         mPaint.setSubpixelText(true);
         resize(width, height, lineHeight);
@@ -251,10 +257,24 @@ final class SpanTextManager {
         Canvas canvas = new Canvas(bitmap);
 
         float[] spanWidths = new float[line.spans.size()];
+        float textWidth = 0.0f;
         for (int i = 0; i < spanWidths.length; i++) {
             spanWidths[i] = mPaint.measureText(line.spans.get(i).text);
+            textWidth += spanWidths[i];
         }
         float x = mHorizontalPadding;
+
+        // Every wrapped display row gets its own content-sized rectangle. The bitmap remains
+        // full-width for the existing GL pipeline, but pixels outside this rectangle stay
+        // transparent so image backgrounds remain visible after the text ends.
+        if (mLineBackground && textWidth > 0.0f) {
+            float horizontalPadding = Math.max(1.0f, mPaint.getTextSize() * 0.10f);
+            float left = Math.max(0.0f, x - horizontalPadding);
+            float right = Math.min((float) mWidth, x + textWidth + horizontalPadding);
+            if (right > left) {
+                canvas.drawRect(left, 0.0f, right, (float) mLineHeight, mLineBackgroundPaint);
+            }
+        }
 
         for (int i = 0; i < spanWidths.length; i++) {
             TextSpan span = line.spans.get(i);

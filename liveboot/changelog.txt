@@ -114,3 +114,10 @@ Custom project modifications:
 - Removed MP4 video support ([video=], [loop=], videos/ folder, video_* settings)
 - Added per-word colors: [w=COLOR]word[/w] inline and [highlight "word" COLOR] rules; [color=] line colors unchanged
 - New SpanTextManager replaces GLTextManager: font-metric baseline (fixes lines jumping/clipping with custom fonts), size-fit for tall fonts, pixel alignment, space-aware wrapping, GL textures freed on the render thread
+
+
+2026-11-13 - Staged font loading and content-sized line backgrounds
+- Stage selected fonts and bundled LiveBootMono.ttf fallback under /data/local/tmp/liveboot-font before app_process launch
+- Pass staged paths to Java and preserve exception class/message in font diagnostics
+- Add optional line_background=on|off; each wrapped display row receives its own text-width black rectangle
+- Add host-side font/background smoke checks; target-device SELinux and visual verification pending

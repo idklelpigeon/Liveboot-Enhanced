@@ -3,6 +3,113 @@
 # helper for this device's CPU ABI instead of assuming a 64-bit ARM phone.
 MODDIR=/data/adb/modules/liveboot_custom
 FILES=$MODDIR/files
+CONFIG=$MODDIR/config/settings.conf
+FONT_SOURCE_DIR=$MODDIR/fonts
+FONT_STAGE_DIR=/data/local/tmp/liveboot-font
+FONT_STAGE_LOG=$FONT_STAGE_DIR/staging.log
+FONT_DEFAULT=LiveBootMono.ttf
+FONT_NAME=$FONT_DEFAULT
+STAGED_FONT_PATH=
+STAGED_FALLBACK_PATH=
+
+# Read the same font selection that Runner reads. The configured file is copied
+# into /data/local/tmp before app_process is started, so Java never races the
+# staging operation and does not need to open the module's original font path.
+if [ -r "$CONFIG" ]; then
+    while IFS='=' read -r key value; do
+        key=$(echo "$key" | /system/bin/sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        value=$(echo "$value" | /system/bin/sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        key=$(echo "$key" | /system/bin/tr '[:upper:]' '[:lower:]')
+        case "$key" in
+            ''|\#*|\;*) continue ;;
+            font) FONT_NAME=$value ;;
+        esac
+    done < "$CONFIG"
+fi
+
+font_stage_log() {
+    /system/bin/mkdir -p "$FONT_STAGE_DIR" 2>/dev/null
+    echo "[$(/system/bin/date 2>/dev/null)] $*" >> "$FONT_STAGE_LOG" 2>/dev/null
+}
+
+stage_font() {
+    source_file=$1
+    destination_file=$2
+    temporary_file="$destination_file.tmp.$$"
+
+    /system/bin/rm -f "$temporary_file" 2>/dev/null
+    if [ ! -f "$source_file" ] || [ ! -s "$source_file" ] || [ ! -r "$source_file" ]; then
+        font_stage_log "FAIL: source font is missing, empty, or unreadable: $source_file"
+        return 1
+    fi
+
+    if ! /system/bin/cp "$source_file" "$temporary_file" 2>/dev/null; then
+        font_stage_log "FAIL: copy failed: $source_file -> $destination_file"
+        /system/bin/rm -f "$temporary_file" 2>/dev/null
+        return 1
+    fi
+    /system/bin/chmod 0644 "$temporary_file" 2>/dev/null
+    if [ ! -s "$temporary_file" ] || [ ! -r "$temporary_file" ]; then
+        font_stage_log "FAIL: staged copy is empty or unreadable: $temporary_file"
+        /system/bin/rm -f "$temporary_file" 2>/dev/null
+        return 1
+    fi
+    if ! /system/bin/mv -f "$temporary_file" "$destination_file" 2>/dev/null; then
+        font_stage_log "FAIL: could not publish staged font: $destination_file"
+        /system/bin/rm -f "$temporary_file" 2>/dev/null
+        return 1
+    fi
+    /system/bin/chmod 0644 "$destination_file" 2>/dev/null
+    if [ -s "$destination_file" ] && [ -r "$destination_file" ]; then
+        staged_size=$(/system/bin/wc -c < "$destination_file" 2>/dev/null)
+        font_stage_log "OK: staged $source_file -> $destination_file ($staged_size bytes)"
+        return 0
+    fi
+
+    font_stage_log "FAIL: final staged file did not pass validation: $destination_file"
+    /system/bin/rm -f "$destination_file" 2>/dev/null
+    return 1
+}
+
+/system/bin/mkdir -p "$FONT_STAGE_DIR" 2>/dev/null
+/system/bin/chmod 0755 "$FONT_STAGE_DIR" 2>/dev/null
+if [ -d "$FONT_STAGE_DIR" ] && [ -r "$FONT_STAGE_DIR" ] && [ -w "$FONT_STAGE_DIR" ]; then
+    case "$FONT_NAME" in
+        ''|[Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Mm][Oo][Nn][Oo][Ss][Pp][Aa][Cc][Ee])
+            font_stage_log "INFO: Android built-in monospace selected; no custom font staging required"
+            ;;
+        *)
+            # Always stage the bundled fallback, even when the configured filename is invalid
+            # or missing. A failed custom font can therefore still use LiveBootMono.ttf.
+            if stage_font "$FONT_SOURCE_DIR/$FONT_DEFAULT" "$FONT_STAGE_DIR/$FONT_DEFAULT"; then
+                STAGED_FALLBACK_PATH=$FONT_STAGE_DIR/$FONT_DEFAULT
+            fi
+            case "$FONT_NAME" in
+                *[!A-Za-z0-9._-]*|.*)
+                    font_stage_log "FAIL: rejected unsafe font filename: $FONT_NAME"
+                    ;;
+                *.ttf|*.TTF|*.otf|*.OTF)
+                    if [ "$FONT_NAME" = "$FONT_DEFAULT" ]; then
+                        STAGED_FONT_PATH=$STAGED_FALLBACK_PATH
+                    elif stage_font "$FONT_SOURCE_DIR/$FONT_NAME" "$FONT_STAGE_DIR/$FONT_NAME"; then
+                        STAGED_FONT_PATH=$FONT_STAGE_DIR/$FONT_NAME
+                    fi
+                    ;;
+                *)
+                    font_stage_log "FAIL: unsupported font filename or extension: $FONT_NAME"
+                    ;;
+            esac
+            ;;
+    esac
+else
+    font_stage_log "FAIL: staging directory is not accessible: $FONT_STAGE_DIR"
+fi
+
+# These variables are inherited by the native daemon helper and app_process.
+# Runner independently validates and opens both paths before initializing GL.
+LIVEBOOT_FONT_PATH=$STAGED_FONT_PATH
+LIVEBOOT_FONT_FALLBACK_PATH=$STAGED_FALLBACK_PATH
+export LIVEBOOT_FONT_PATH LIVEBOOT_FONT_FALLBACK_PATH
 
 ABILIST=$(/system/bin/getprop ro.product.cpu.abilist 2>/dev/null)
 [ -n "$ABILIST" ] || ABILIST=$(/system/bin/getprop ro.product.cpu.abi 2>/dev/null)
