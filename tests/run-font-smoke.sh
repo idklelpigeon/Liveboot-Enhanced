@@ -16,6 +16,12 @@ grep -q 'Typeface.Builder(fontFile)' "$RUNNER" || { echo "FAIL: modern Android f
 grep -q 'Typeface.createFromFile(fontFile)' "$RUNNER" || { echo "FAIL: compatibility font loader missing" >&2; exit 1; }
 grep -q 'LIVEBOOT_FONT_PATH' "$RUNNER" || { echo "FAIL: Java staged-font environment input missing" >&2; exit 1; }
 grep -q 'LIVEBOOT_FONT_FALLBACK_PATH' "$RUNNER" || { echo "FAIL: Java fallback-font environment input missing" >&2; exit 1; }
+grep -q 'getDeclaredMethod("loadPreinstalledSystemFontMap")' "$RUNNER" || { echo "FAIL: early app_process Typeface system-map initializer missing" >&2; exit 1; }
+grep -q 'Typeface.DEFAULT == null || Typeface.MONOSPACE == null' "$RUNNER" || { echo "FAIL: Typeface initialization result is not validated" >&2; exit 1; }
+grep -q 'Typeface system map: ' "$RUNNER" || { echo "FAIL: Typeface initialization status is not included in font diagnostics" >&2; exit 1; }
+MAP_INIT_LINE=$(grep -n 'sTypefaceSystemMapStatus = initializeTypefaceSystemMap();' "$RUNNER" | cut -d: -f1)
+RUNNER_CONSTRUCT_LINE=$(grep -n 'new Runner().run(args);' "$RUNNER" | cut -d: -f1)
+[ -n "$MAP_INIT_LINE" ] && [ -n "$RUNNER_CONSTRUCT_LINE" ] && [ "$MAP_INIT_LINE" -lt "$RUNNER_CONSTRUCT_LINE" ] || { echo "FAIL: Typeface system map must initialize before Runner instance fields read Typeface.MONOSPACE" >&2; exit 1; }
 grep -q 'LiveBootMono.ttf also failed' "$RUNNER" || { echo "FAIL: bundled-font fallback diagnostics missing" >&2; exit 1; }
 grep -q '/data/local/tmp/liveboot-font' "$LAUNCHER" || { echo "FAIL: launcher staging directory missing" >&2; exit 1; }
 grep -q '/system/bin/cp' "$LAUNCHER" || { echo "FAIL: launcher does not copy font files before launch" >&2; exit 1; }
@@ -30,4 +36,4 @@ grep -q 'fonts/LiveBootMono.ttf' "$ROOT/package_module.sh" || { echo "FAIL: pack
 grep -qx 'line_background=off' "$CONFIG" || { echo "FAIL: line background default is not explicitly disabled" >&2; exit 1; }
 grep -q 'canvas.drawRect(left, 0.0f, right' "$RENDERER" || { echo "FAIL: content-sized per-row background drawing missing" >&2; exit 1; }
 grep -q 'mLineBackground' "$RENDERER" || { echo "FAIL: line background toggle is not wired into renderer" >&2; exit 1; }
-echo "PASS: font staging, Java font loading/fallback, bundled font/license, and content-sized line backgrounds"
+echo "PASS: font staging, early app_process Typeface initialization, Java font loading/fallback, bundled font/license, and content-sized line backgrounds"

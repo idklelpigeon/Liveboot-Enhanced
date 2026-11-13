@@ -4,10 +4,12 @@
 
 - Stage the configured TTF/OTF font into `/data/local/tmp/liveboot-font/` synchronously before launching `app_process`.
 - Verify staged font copies and permissions, pass staged/fallback paths through environment variables, and log loader exceptions with their messages.
+- Initialize Android’s preinstalled Typeface map reflectively before constructing `Runner`, because direct `app_process` startup can bypass normal application-binding initialization.
 - Fall back to the bundled `LiveBootMono.ttf` before Android monospace if a configured custom font cannot be loaded.
 - Add `line_background=on|off`; when enabled, draw an independent black background behind each displayed/wrapped text row, limited to its measured text width.
 - Add host-side smoke checks for font staging and content-sized line-background rendering.
-- Device validation remains pending, including `/data/local/tmp` SELinux access.
+- Log the Typeface map initialization result alongside each font load/fallback result.
+- Device validation remains pending, including hidden-API access and `/data/local/tmp` SELinux access.
 
 ## v1.0 — 2026-11-11
 

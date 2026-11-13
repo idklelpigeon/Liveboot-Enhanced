@@ -117,7 +117,7 @@ Stock LiveBoot streams kernel and logcat output — useful, but visually flat an
 - **Adjustable text size** — pick a size that reads well on the device's screen without clipping.
 - **Word wrapping** — long lines wrap cleanly instead of being truncated, with a configurable limit.
 - **Configurable line count** — control how many lines are visible at once so layouts stay stable.
-- **Custom TTF/OTF fonts** — the launcher stages the selected font before starting Java; the renderer loads the staged path and falls back to the bundled `LiveBootMono.ttf` with exception details logged. The new path still needs device verification.
+- **Custom TTF/OTF fonts** — the launcher stages the selected font before starting Java; before constructing the renderer, Java attempts to initialize Android’s preinstalled Typeface map (normally populated during application binding) and then loads the staged font. Loader and initialization errors are recorded, with the bundled `LiveBootMono.ttf` tried before Android monospace. The early-boot initialization path still needs device verification.
 
 ### Configuration surface
 
@@ -129,7 +129,7 @@ Everything above is driven from `config/settings.conf` and files in `messages/`.
 
 | Issue / validation item | Status | Notes |
 |---|---|---|
-| Custom TTF/OTF fonts | 🟡 Requires device validation | v1.0's direct loader was reported broken. The current source stages fonts under `/data/local/tmp/liveboot-font/`, logs the loader exception, and falls back to bundled `LiveBootMono.ttf`; SELinux access is device-dependent and has not yet been verified on the target firmware. |
+| Custom TTF/OTF fonts | 🟡 Requires device validation | The source stages fonts under `/data/local/tmp/liveboot-font/` and initializes the preinstalled Typeface map reflectively before custom font construction. Loader and initialization failures are logged; bundled `LiveBootMono.ttf` is tried before Android monospace. The reflection workaround and SELinux access must still be verified on the target firmware. |
 | Content-sized line backgrounds | 🟡 Requires device validation | Host-side source checks cover the per-row, measured-width drawing path. Visual behavior with image layers still needs on-device testing. |
 
 The existing v1.0 behavior for message scripting, line/word colors, highlighting rules, progress bars, image layers, text size, wrapping, and line count was tested on the reference device. The two changes above are new source changes and are not included in that device-verification claim.
@@ -288,6 +288,6 @@ Based on [LiveBoot](https://github.com/Chainfire/liveboot) by Jorrit "Chainfire"
 
 v1.0 has been validated on a single reference device (Galaxy S21 5G / G991N on KernelSU Next). A successful build and ZIP validation confirm that the source compiled and the archive is structurally complete; they do not guarantee early boot rendering, device-specific graphics initialization, image decoding, or compatibility with every Android firmware/root combination.
 
-The custom-font staging and content-sized line-background changes in the current source have not yet been verified on a device. In particular, SELinux access to `/data/local/tmp/liveboot-font/` depends on the target firmware and root implementation.
+The custom-font staging, early-boot Typeface map initialization, and content-sized line-background changes in the current source have not yet been verified on a device. In particular, the hidden Typeface initialization method and SELinux access to `/data/local/tmp/liveboot-font/` depend on the target firmware and root implementation.
 
 Test the module on your own target device and keep a recovery path available before distributing it further.

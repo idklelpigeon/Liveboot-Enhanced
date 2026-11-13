@@ -32,6 +32,8 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -82,7 +84,39 @@ implements
             }
         });
 
+        // app_process starts this entry point without ActivityThread's normal application bind.
+        // On Android releases using lazy Typeface initialization, that leaves Typeface.DEFAULT
+        // and the generic font family constants unset. Typeface.Builder and
+        // Typeface.createFromFile() eventually dereference that missing system fallback.
+        sTypefaceSystemMapStatus = initializeTypefaceSystemMap();
+        Logger.d("FONT: system typeface map initialization: %s", sTypefaceSystemMapStatus);
+
         new Runner().run(args);
+    }
+
+    /**
+     * Initialize Android's preinstalled typeface map before any Runner instance reads
+     * Typeface.MONOSPACE or attempts to construct a custom Typeface. This is normally
+     * performed during application binding; the standalone app_process launch skips that
+     * lifecycle step. The method is hidden from the public SDK, so resolve it reflectively.
+     */
+    private static String initializeTypefaceSystemMap() {
+        try {
+            Method initializer = Typeface.class.getDeclaredMethod("loadPreinstalledSystemFontMap");
+            initializer.invoke(null);
+
+            if (Typeface.DEFAULT == null || Typeface.MONOSPACE == null) {
+                throw new IllegalStateException(
+                        "loadPreinstalledSystemFontMap returned without populating Typeface defaults");
+            }
+            return "OK: loadPreinstalledSystemFontMap populated Typeface.DEFAULT and MONOSPACE";
+        } catch (Throwable error) {
+            Throwable cause = error;
+            while (cause instanceof InvocationTargetException && cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+            return "FAILED: " + describeFontThrowable(cause);
+        }
     }
 
     public static final String LIVEBOOT_ABORT_FILE = "/dev/.liveboot_exit";
@@ -129,6 +163,7 @@ implements
     private static final String MESSAGE_ROOT = MODULE_ROOT + "/messages";
     private static final String FONT_ROOT = MODULE_ROOT + "/fonts";
     private static final String STAGED_FONT_ROOT = "/data/local/tmp/liveboot-font";
+    private static String sTypefaceSystemMapStatus = "not attempted";
     private static final String IMAGE_ROOT = MODULE_ROOT + "/images";
     private static final long MAX_MESSAGE_FILE_BYTES = 1024L * 1024L;
     private static final long MAX_IMAGE_FILE_BYTES = 32L * 1024L * 1024L;
@@ -448,13 +483,14 @@ implements
     }
 
     private void writeFontStatus(String status) {
-        Logger.d("FONT: %s", status);
+        String completeStatus = status + "; Typeface system map: " + sTypefaceSystemMapStatus;
+        Logger.d("FONT: %s", completeStatus);
         try {
             File statusFile = new File(FONT_STATUS_PATH);
             File statusDirectory = statusFile.getParentFile();
             if (statusDirectory != null && !statusDirectory.exists()) statusDirectory.mkdirs();
             try (FileOutputStream output = new FileOutputStream(statusFile, false)) {
-                output.write((status + "\n").getBytes("UTF-8"));
+                output.write((completeStatus + "\n").getBytes("UTF-8"));
                 output.flush();
             }
         } catch (Exception e) {
@@ -463,10 +499,25 @@ implements
     }
 
     private static String describeFontException(Exception error) {
+        return describeFontThrowable(error);
+    }
+
+    private static String describeFontThrowable(Throwable error) {
         if (error == null) return "unknown failure";
-        String message = error.getMessage();
-        return error.getClass().getName()
-                + ((message == null || message.trim().length() == 0) ? "" : ": " + message);
+        StringBuilder description = new StringBuilder();
+        Throwable current = error;
+        int depth = 0;
+        while (current != null && depth < 5) {
+            if (depth > 0) description.append(" <- ");
+            description.append(current.getClass().getName());
+            String message = current.getMessage();
+            if (message != null && message.trim().length() > 0) {
+                description.append(": ").append(message.trim());
+            }
+            current = current.getCause();
+            depth++;
+        }
+        return description.toString();
     }
 
     private static boolean hasSupportedFontSignature(byte[] signature) {
