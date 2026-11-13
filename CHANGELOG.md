@@ -2,6 +2,7 @@
 
 ## Unreleased — 2026-11-13
 
+- Increase the maximum custom message-script file size from 1 MiB to 50 MiB (52,428,800 bytes); retain the independent 10,000-line guard.
 - Stage the configured TTF/OTF font into `/data/local/tmp/liveboot-font/` synchronously before launching `app_process`.
 - Verify staged font copies and permissions, pass staged/fallback paths through environment variables, and log loader exceptions with their messages.
 - Initialize Android’s preinstalled Typeface map reflectively before constructing `Runner`, because direct `app_process` startup can bypass normal application-binding initialization.

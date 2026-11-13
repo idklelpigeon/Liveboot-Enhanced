@@ -165,7 +165,7 @@ implements
     private static final String STAGED_FONT_ROOT = "/data/local/tmp/liveboot-font";
     private static String sTypefaceSystemMapStatus = "not attempted";
     private static final String IMAGE_ROOT = MODULE_ROOT + "/images";
-    private static final long MAX_MESSAGE_FILE_BYTES = 1024L * 1024L;
+    private static final long MAX_MESSAGE_FILE_BYTES = 50L * 1024L * 1024L;
     private static final long MAX_IMAGE_FILE_BYTES = 32L * 1024L * 1024L;
     private static final long MAX_DECODED_IMAGE_PIXELS = 8L * 1024L * 1024L;
     private static final int MAX_IMAGE_DIMENSION = 4096;

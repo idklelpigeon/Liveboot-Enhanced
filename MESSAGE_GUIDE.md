@@ -16,7 +16,7 @@ When a valid custom message file is selected, the custom script controls the dis
 
 - Store message files directly in `liveboot_custom/messages/`.
 - Set `message=filename.txt` in `config/settings.conf`; use only the filename, not a directory path.
-- Message files are limited to 1 MiB and 10,000 lines.
+- Message files may be up to 50 MiB (52,428,800 bytes) and are independently limited to 10,000 lines.
 - Blank lines are displayed as blank lines.
 - Directives must be on their own line unless specifically described as inline text tags.
 - Text uses the current line color, which starts as white.
@@ -321,7 +321,7 @@ Boot display sequence complete.
 
 **`[replace]` does not change anything.** It replaces the most recent retained message line with the next visible text/progress line. It cannot replace a line after `[clear]` or when no prior line exists. For literal substitution within displayed history, use `[replace "old" with "new"]`.
 
-**The custom message does not load.** Check `message=` for a filename only, verify the file exists in `messages/`, and ensure it is below 1 MiB and 10,000 lines.
+**The custom message does not load.** Check `message=` for a filename only, verify the file exists in `messages/`, and ensure it is no larger than 50 MiB (52,428,800 bytes) and contains no more than 10,000 lines.
 
 **An image does not appear.** Check its exact filename and supported extension, confirm it is in `images/`, and verify it is non-empty and below 32 MiB. Image names cannot contain directory paths.
 
